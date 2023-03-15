@@ -30,6 +30,7 @@
 \usepackage{mathtools}
 \usepackage{graphicx}  % allows inclusion of PDF, PNG and JPG images
 
+
 \newlength\myindent
 \setlength\myindent{2em}
 \newcommand\bindent{%
@@ -90,9 +91,9 @@
 
 Federated Averaging is a popular method for performing Federated Learning because it is simple to implement, requires minimal communication, statelessness, and ease to add on privacy preservation.  However FedAvg suffers from problems caused by client heterogeneity, which is an intrinsic part of real Federated Learning systems.  It has been shown in recent papers \cite{FewerClientsWorseBehaviour} that this is made worse when only selecting a subset of the total clients which are available for training, which means that in a cross-device setting it can cause significantly more issues, this is also caused by sampling biases in reality of which clients are available to us.  There have been several techniques proposed to deal with these issues, such as in \cite{signSGD} and \cite{ProxSkip}, however each of these have significant drawbacks such as making the clients stateful, adding extra computation, or limiting privacy which are some of the main reason why we want to perform Federated Averaging in the first place.  
 
-Recently this slowdown has been addressed by adding a server learning rate, which controls the step size used when aggregating pseudo-gradients from the clients. \cite{}  For these to work well it is proposed that the client step size is O($\frac{1}{\tau\sqrt{T}}$) and server step size is O($\tau\sqrt{M}$), where $\tau$ is the number of local epochs, $T$ is the number of communication rounds, and $M$ is the number of clients.  In practice however these do not lead to great results because the small client step size impacts the speed of training heavily, which the large global step size cannot be fully compensated for by a large server step size, this is most prevalent in the initial rounds.
+Recently this slowdown has been addressed by adding a server learning rate, which controls the step size used when aggregating pseudo-gradients from the clients. \cite{AdaptiveFederatedOptimisation}  For these to work well it is proposed that the client step size is O($\frac{1}{\tau\sqrt{T}}$) and server step size is O($\tau\sqrt{M}$), where $\tau$ is the number of local epochs, $T$ is the number of communication rounds, and $M$ is the number of clients.  In practice however these do not lead to great results because the small client step size impacts the speed of training heavily, which the large global step size cannot be fully compensated for by a large server step size, this is most prevalent in the initial rounds.
 
-FedExP attempts to dynamically set the size of the global step size to ensure fast convergence of the overall model while still having a moderate client step size, it also wants to take into account the heterogeneity between the local objective functions because it has been shown that it can be beneficial to have a smaller server step size if the local objectives differ significantly. \cite{}  FedExP accomplishes this by establishing a connection between FedAvg and the Projection Onto Convex Sets (POCS) algorithm.  Using an analogy between the server step size and the extrapolation parameter used to speed up POCS \cite{}, this then allows the new extensions to the algorithm deal with inexact and noisy projections, the main one of interest to us is a time-varying bound on the progress of clients towards the optimal solution and how this can be used to dynamically estimate a good server step size, resulting in FedExP.  These connections and analogies are only strictly valid in the case that the model is over-parameterised, there are more parameters than data points across all clients, this can often be the case with deep neural models.
+FedExP attempts to dynamically set the size of the global step size to ensure fast convergence of the overall model while still having a moderate client step size, it also wants to take into account the heterogeneity between the local objective functions because it has been shown that it can be beneficial to have a smaller server step size if the local objectives differ significantly. \cite{smallServerStepSizeForHetrogeneity}  FedExP accomplishes this by establishing a connection between FedAvg and the Projection Onto Convex Sets (POCS) algorithm.  Using an analogy between the server step size and the extrapolation parameter used to speed up POCS \cite{ExtrapolatedPOCS}, this then allows the new extensions to the algorithm deal with inexact and noisy projections, the main one of interest to us is a time-varying bound on the progress of clients towards the optimal solution and how this can be used to dynamically estimate a good server step size, resulting in FedExP.  These connections and analogies are only strictly valid in the case that the model is over-parameterised, there are more parameters than data points across all clients, this can often be the case with deep neural models.
 
 \begin{algorithm}
 \caption{FedExP}
@@ -164,24 +165,91 @@ This has all be implemented as a baseline as well which allows easy use of the s
 The implementations of the CIFAR data sets follow very closely what is done in the Adaptive Federated Optimization baseline and the FEMNIST data set part is based around the work performed in the course labs.  In all of these cases though the client which is being used had to be changed away from what is used elsewhere (either in the labs or Adaptive Federated Optimization baseline) due to the original FedExP paper \cite{FedExP} using a weight decay for the optimiser, decreasing the client learning rate on each round, and performing gradient clipping during the local training process.  The client therefore looks for these values in the config which is passed on every training round, where there is a custom function to generate the config passed to them.  The values used inside of the function to generate the config for each round, are specified in the overall config of the baseline.
 
 \begin{figure}
-    \centerline{\includegraphics[width=\linewidth]{figs/fedAdamSyntheticHyperpameterTuning.png}}
+    \centerline{\includegraphics[width=\linewidth]{figs/fedAdamSyntheticHyperpameterTuning.pdf}}
     \caption{Hyper-parameter sweep of FedAdam for the synthetic data set}
     \label{fig:fedAdamSweep}
 \end{figure}
 
-Hydra is used to allow easy management of the configuration of the runs of the baseline, and to manage the hyper-parameters -- this makes it very easy to be able to change any of the values which you may want to, for example the number size of mini-batches, number of local epochs, concentration of Dirichlet distribution etc., are all controlled by YAML config files the given versions will produce the same results as in the original FedExP paper (with the optimal hyper-parameters selected for each strategy).  The use of these configuration files makes it very easy to add in new strategies to the comparison on any data set and perform hyper-parameter tuning; FedAdam has been addded as an additional algorithm compared the original paper for use on the synthetic data set, to add it to the comparison a single new YAML file had to be created specifying where to find the strategy (the FedAdam strategy is already built into Flower so this is referencing that implementation), and the hyper-parameters associated with that strategy (but none of the general hyper-parameters which affect all strategies).  To perform a hyper-parameter sweep Hydra can be used in multi-run mode, where you specify several values for each hyper-parameter and the baseline is run across all combinations the results of the hyper-parameter sweep for FedAdam on the synthetic data set can be seen in figure \ref{fig:fedAdamSweep} (the values for $\beta_1$ and $\beta_2$ are kept at 0.9 and 0.99 respectively, as was done in \cite{AdaptiveFederatedOptimisation}.
-
-Also in this section I think I should show how it is easy to add FedAdam to comparison in synthetic dataset case and to perform the hyperparameter sweep to get good values for the hyper-parameters.
-
-
-Also potentially need to change the CIFAR-100 to work in the same way as CIFAR-10 for generating the different distributions because that I think is how the paper does it, although this is likely not quite a realistic as the current method.
-
+Hydra is used to allow easy management of the configuration of the runs of the baseline, and to manage the hyper-parameters -- this makes it very easy to be able to change any of the values which you may want to, for example the number size of mini-batches, number of local epochs, concentration of Dirichlet distribution etc., are all controlled by YAML config files the given versions will produce the same results as in the original FedExP paper (with the optimal hyper-parameters selected for each strategy).  The use of these configuration files makes it very easy to add in new strategies to the comparison on any data set and perform hyper-parameter tuning; FedAdam has been added as an additional algorithm compared the original paper for use on the synthetic data set, to add it to the comparison a single new YAML file had to be created specifying where to find the strategy (the FedAdam strategy is already built into Flower so this is referencing that implementation), and the hyper-parameters associated with that strategy (but none of the general hyper-parameters which affect all strategies).  To perform a hyper-parameter sweep Hydra can be used in multi-run mode, where you specify several values for each hyper-parameter and the baseline is run across all combinations the results of the hyper-parameter sweep for FedAdam on the synthetic data set can be seen in figure \ref{fig:fedAdamSweep} (the values for $\beta_1$ and $\beta_2$ are kept at 0.9 and 0.99 respectively, as was done in \cite{AdaptiveFederatedOptimisation}.
 
 \section{Analysis}
 
-In this likely talk about the interesting observed behaviours and how it is is different to other algorithms which is quite telling, such as the fact it is has a much more perturbed loss curve compared to FedAvg and also showing how changing several of the hyperparameters of it affects the overall result.
+The analysis of the algorithm and comparison to other algorithms will mainly focus on the synthetic data set because of limited computational resources available to me, which means that it is the only data set where I can run it for a significant number of rounds with similar settings to the paper; and there are interesting observations which can be made on this simple problem.  There is also a brief showing of initial performance of the strategies on other data sets however these runs do not have the same hyper-parameter settings as the original paper, and potentially not optimal hyper-parameter settings for the new runs so any conclusions which can be made from them are more limited.
+
+It is also the case that SCAFFOLD is not included in the comparison of the different strategies, despite being included in the original paper, because it is natively available inside of Flower and was not inside the scope of this project to implement, however FedProx has been included despite not being included in the main part of the original paper.  It should also be noted that the implementation of FedAdagrad used differs from the one used in the original paper, in where the adaptability parameter is added (in the Flower strategy it is outside a square root but the original paper has it inside) which cannot be simply corrected by some constant adjustment.  Therefore it is likely that the results for FedAdagrad could be improved by redoing hyper-parameter tuning, this would not affect the synthetic data set anyway (because it is set to 0) and I have not had the computational resources/time to be able to perform it for the other data sets where it would likely make a difference.
+
+\subsection{Synthetic data set}
+
+\subsubsection{Comparison of different seeds on performance}
+
+The performance of the different strategies is shown in figure \ref{fig:200RoundsSeed0} when run on exactly the same synthetic data set as in the original paper.  From the graph it is clear that the performance of FedExP is the same as is shown in the original paper.  The more spiky nature of all of the lines of the plots (and fast oscillations in FedAdagrad) are caused by taking the evaluation of the model after every round instead of every five rounds.  It is clear that it is converging towards the optimal solution substantially faster than any of the other methods, including FedAdam which was not included in the original paper.  It is also clear from these graphs that having a very high global learning rate is important for solving this problem quickly because FedProx (which is a very strict implementation where the global learning rate must be one) is performing significantly worse than the other methods.  This observation may not be particularly helpful with real problems because they are generally so complex that a really high global learning rates will not be helpful (leading to problems of not converging).  However it does show us that if for a real task we can use a very high global learning rate (even if just temporarily) then FedExP should be able to best exploit it by dynamically changing the learning rate.  In figure \ref{fig:200RoundsSeed42} we can see that the results when it is run on a different lot of randomly generated data, we can see that all of the patterns hold, this gives us confidence that the better performance in this task is genuine and not just caused by the specific data selected.
+
+\begin{figure}
+    \centerline{\includegraphics[width=.6\linewidth]{figs/syntheticSeed0_200Rounds.pdf}}
+    \caption{Performance of different strategies on the synthetic data set, generated with np.random.seed(0)}
+    \label{fig:200RoundsSeed0}
+\end{figure}
+
+\begin{figure}
+    \centerline{\includegraphics[width=.6\linewidth]{figs/syntheticSeed42_200Rounds.pdf}}
+    \caption{Performance of different strategies on the synthetic data set, generated with np.random.seed(42)}
+    \label{fig:200RoundsSeed42}
+\end{figure}
+
+
+\subsubsection{Effect of different number of rounds averaged over}
+
+In figure \ref{fig:differentNumberOfAverageEvaluateRoundsSynthetic} the affect of changing the number of rounds which are averaged out to give the parameters for the evaluation.  As expected the larger the number of rounds averaged over the smoother the loss curve is.  The higher number of evaluation rounds all start their curves with very similar smooth curves, this is caused by the fact that the number of rounds is being increased on every extra round due to not actually having gone through all the rounds which is wanted to be averaged over.  This graph shows the clear trade off between having a much smoother curve and still having low loss, in the original paper they mention how increasing the number of rounds averaged over past 2 did not have much effect but we can see in the synthetic data set that it clearly does have a large effect, arguably 5 rounds looks to be the best trade off for this data set.  However in real data sets it is likely that their observations do hold and this higher number is caused by the very easy nature of the problem which is being solved. 
+
+\begin{figure}
+    \centerline{\includegraphics[width=.6\linewidth]{figs/synthetic_numberOfRoundsAverageEvaluate.pdf}}
+    \caption{FedExP performance reported in evaluate averaging over different number of rounds}
+    \label{fig:differentNumberOfAverageEvaluateRoundsSynthetic}
+\end{figure}
+
+\subsubsection{Long term behaviour}
+
+In figure \ref{fig:2000RoundsSynthetic} the performance of the different strategies can be seen over a much larger number of rounds until the point that most of them are not improving any more.  FedProx is clearly the outlier, as before this is due to it having a much smaller global learning rate.  The performance of FedExP is quite interesting to observe because it clearly has the most perturbed loss curve when learning is actually happening but when it has learned the solution it has one of the smoothest curves; this makes sense from the algorithm because during the learning process it will have a very high global learning rate to make big changes but is able to lower the global learning rate dynamically to ensure that the weights are still getting closer to the optimal set of weights and can turn into FedAvg when the value suggested by extrapolation is small.  It is also clear from the graph that the end of performance of FedExP is actually higher than any other methods (although if run for a few thousand more rounds then it is likely that FedAvg would get very close), this shows that for this problem it is clearly the best strategy and has the good theoretical results in practice and that compared to other adaptive strategies it is not suffering from achieving a lower end performance compared with more simple strategies.
+
+\begin{figure}
+    \centerline{\includegraphics[width=\linewidth]{figs/synthetic_2000Rounds.pdf}}
+    \caption{Performance of different strategies on the synthetic data set}
+    \label{fig:2000RoundsSynthetic}
+\end{figure}
+
+\subsubsection{Varying $\epsilon$}
+
+\begin{figure}
+    \centerline{\includegraphics[width=.6\linewidth]{figs/synthetic_varyingEpsilon.pdf}}
+    \caption{Performance of FedExP with varying $\epsilon$}
+    \label{fig:varyingEpsilon}
+\end{figure}
+
+In figure \ref{fig:varyingEpsilon} the effects of changing the value of $\epsilon$ can be seen.  It is clear that having a higher value for $\epsilon$ leads to a smoother curve (because it is going to be using a smaller global learning rate therefore changes will not be as extreme to the overall model), while leading to significantly slower convergence to the optimal model.  The extreme sensitivity of performance to $\epsilon$ is likely to be a slight quirk of this data set, because the global learning rate chosen if not following the extrapolation is 1 but for the other strategies where the global learning rate is tuned it is set to 10, however the main point still stands in that increasing $\epsilon$ leads to performance closer to what FedAvg would achieve, it is also the case that above a certain point changing it has no effect because the extrapolation will never be chosen as the value for global learning rate.  The exact values of $\epsilon$ which should be chosen will depend on your model, due to that changing the size of the pseudo-gradient which is expected on each round, and the behaviour you want to see because if you want a smoother learning then a higher value will likely help but could slow down learning.  It is also possible that you would want to have an adaptive method for choosing the $\epsilon$ because as explained in the original paper it is mainly useful for when near convergence to the optimal solution, preventing massive learning rates caused by dividing a value very close to zero, therefore increasing it as you get closer could allow a good blending between the fast learning and smooth performance of FedAvg when near optimal solutions.
+
+\subsection{Real data sets}
+
+\begin{figure}
+    \centerline{\includegraphics[width=\linewidth]{figs/realDatasetPerformance.pdf}}
+    \caption{Performance of different strategies against real data sets}
+    \label{fig:realDatasetPerformance}
+\end{figure}
+
+In figure \ref{fig:realDatasetPerformance} the performance of the different strategies initially is shown on several real data sets, we can see that FedExP is generally performing very well in comparison to the other strategies (for FEMNIST this does not look to hold but would likely be born out in longer runs); this is supported by what is shown in the paper where we expect FedExP to achieve faster convergence by dynamically selecting a good global learning rate.  The slight caveats to this are that FedAdagrad is not performing very well at all, this is likely due to mischosen hyper-parameters because of the differences between the FedAdagrad implementations explained above, and the settings for the CIFAR data sets differ to those in paper due to limited computational resources (only using 3 local epochs and 10 clients per round).
+
+\subsubsection{FEMNIST Evaluate number of rounds}
+
+In figure \ref{fig:femnistDifferentNumberOfEvaluateRounds} it is clear that the performance of FedExP is increased by averaging the weights used in evaluation compared to the raw weights, because we are following better global path, and that it has smaller perturbations in the loss curve getting closer to the performance of FedAvg.  This clearly show us that when working on real data sets it is important to average out several rounds of weights when evaluating the performance of the model, potentially more so than on the synthetic results because of the noticeably higher performance in this more difficult task.
+
+\begin{figure}
+    \centerline{\includegraphics[width=.6\linewidth]{figs/femnist_fedexp_fedavg_evaluateRounds.pdf}}
+    \caption{Performance of differing number of average rounds for FedExP against FedAvg on FEMNIST data set}
+    \label{fig:femnistDifferentNumberOfEvaluateRounds}
+\end{figure}
 
 \section{Conclusion}
+
+This project has successfully implemented the FedExP strategy into Flower and provided an analysis and comparison of its performance, with attention paid to how varying its hyper-parameters' change its behaviour.
 
 \bibliography{refs}
 
